@@ -1,7 +1,8 @@
-package loan
+package main
 
 import (
 	"context"
+	"encoding/gob"
 	"fmt"
 	"time"
 
@@ -14,6 +15,13 @@ var (
 	processOrderWf = dbos.WithWorkflow(src.LoanProcessWorkflow)
 )
 
+func init() {
+	gob.Register(src.DuplicateCheckResult{})
+	gob.Register(src.SaveResult{})
+	gob.Register(src.DocumentVerificationResult{})
+	gob.Register(src.CreditCheckResult{})
+}
+
 func main() {
 	err := dbos.Launch()
 	if err != nil {
@@ -22,8 +30,14 @@ func main() {
 
 	defer dbos.Shutdown()
 
+	// init database
+	err = src.InitializeSchema()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to initialize schema: %v", err))
+	}
+
 	loanApp := src.LoanApplication{
-		ApplicationID: "LOAN-2024-001",
+		ApplicationID: "LOAN-2024-004",
 		ApplicantName: "John Doe",
 		Email:         "john.doe@example.com",
 		Phone:         "+1-555-0123",
@@ -38,7 +52,12 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println(handle)
+	result, err := handle.GetResult(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Result: %s\n", result)
 
 	time.Sleep(2 * time.Second)
 }

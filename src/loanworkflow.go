@@ -2,14 +2,22 @@ package src
 
 import (
 	"context"
+	"database/sql"
+	_ "embed" // Add this
 	"fmt"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-go/dbos"
+	_ "github.com/lib/pq"
 )
 
-var (
-	processOrderWf = dbos.WithWorkflow(LoanProcessWorkflow)
+//go:embed schema.sql
+var schemaSQL string
+
+const (
+	StatusSubmitted = "SUBMITTED"
+	StatusApproved  = "APPROVED"
+	StatusRejected  = "REJECTED"
 )
 
 type LoanApplication struct {
@@ -23,33 +31,120 @@ type LoanApplication struct {
 	SubmittedAt   time.Time `json:"submitted_at"`
 }
 
+type DuplicateCheckResult struct {
+	IsDuplicate bool
+}
+
+type CreditCheckResult struct {
+	CreditScore int  `json:"credit_score"`
+	Approved    bool `json:"approved"`
+}
+
+type DocumentVerificationResult struct {
+	Status   string `json:"status"` // "complete", "pending"
+	Verified bool   `json:"verified"`
+}
+
+type SaveResult struct {
+	ApplicationID string
+	Saved         bool
+}
+
 func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, error) {
-	// check stock
-	_, err := dbos.RunAsStep(ctx, Credit_Check, loanApp)
+	// check if already processed
+	duplicateCheckResult, err := dbos.RunAsStep(ctx, CheckIfDuplicate, loanApp)
 	if err != nil {
 		return "", err
 	}
 
-	fmt.Println("this is normal code")
+	if duplicateCheckResult.IsDuplicate {
+		return "already processed", nil
+	}
 
-	sum := 2 + 2
+	// Save the application
+	_, err = dbos.RunAsStep(ctx, SaveLoanApplication, loanApp)
+	if err != nil {
+		return "", err
+	}
 
-	fmt.Println(sum)
+	_, err = dbos.RunAsStep(ctx, CreditCheck, loanApp)
+	if err != nil {
+		return "", err
+	}
 
-	_, err = dbos.RunAsStep(ctx, Document_Verification, loanApp)
+	documentResult, err := dbos.RunAsStep(ctx, DocumentVerification, loanApp)
 	if err != nil {
 		return "", nil
 	}
 
-	return "Order is ready for collection", nil
+	if !documentResult.Verified {
+		return "Application pending - documents need verification", nil
+	}
+
+	return "Loan application approved and ready for processing", nil
 }
 
-func Credit_Check(ctx context.Context, loanApp LoanApplication) (string, error) {
-	fmt.Printf("checking stock for order ID: %d \n", loanApp.ApplicationID)
-	return "stock found", nil
+func SaveLoanApplication(ctx context.Context, loanApp LoanApplication) (*SaveResult, error) {
+	fmt.Printf("Saving loan application: %s\n", loanApp.ApplicationID)
+
+	db, err := getDBConnection()
+	if err != nil {
+		return &SaveResult{}, fmt.Errorf("database connection failed: %w", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`
+        INSERT INTO loan_applications (application_id, applicant_name, email, phone, loan_amount, loan_purpose, annual_income, status, submitted_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		loanApp.ApplicationID, loanApp.ApplicantName, loanApp.Email, loanApp.Phone,
+		loanApp.LoanAmount, loanApp.LoanPurpose, loanApp.AnnualIncome, StatusSubmitted, loanApp.SubmittedAt)
+
+	if err != nil {
+		return &SaveResult{}, fmt.Errorf("failed to save application: %w", err)
+	}
+
+	return &SaveResult{
+		ApplicationID: loanApp.ApplicationID,
+		Saved:         true,
+	}, nil
 }
 
-func Document_Verification(ctx context.Context, loanApp LoanApplication) (string, error) {
-	fmt.Printf("sending email to customer ID: %d", loanApp.ApplicationID)
-	return "email sent", nil
+func CheckIfDuplicate(ctx context.Context, loanApp LoanApplication) (*DuplicateCheckResult, error) {
+	db, err := getDBConnection()
+	if err != nil {
+		return &DuplicateCheckResult{}, fmt.Errorf("database connection failed: %w", err)
+	}
+	defer db.Close()
+
+	// Check if application ID already exists
+	var existingID string
+	err = db.QueryRow("SELECT application_id FROM loan_applications WHERE application_id = $1", loanApp.ApplicationID).Scan(&existingID)
+	if err == sql.ErrNoRows {
+		// No duplicate found
+		return &DuplicateCheckResult{}, nil
+	}
+
+	if err != nil {
+		return &DuplicateCheckResult{}, fmt.Errorf("database query failed: %w", err)
+	}
+
+	// Duplicate found
+	fmt.Printf("Duplicate application found: %s\n", existingID)
+	return &DuplicateCheckResult{IsDuplicate: true}, nil
+}
+
+func CreditCheck(ctx context.Context, loanApp LoanApplication) (*CreditCheckResult, error) {
+	fmt.Printf("Performing credit check for: %s\n", loanApp.ApplicantName)
+
+	return &CreditCheckResult{
+		CreditScore: 720,
+		Approved:    true,
+	}, nil
+}
+
+func DocumentVerification(ctx context.Context, loanApp LoanApplication) (*DocumentVerificationResult, error) {
+	return &DocumentVerificationResult{
+		Status:   "complete",
+		Verified: true,
+	}, nil
 }

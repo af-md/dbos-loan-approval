@@ -35,28 +35,6 @@ This project shows how to use [DBOS Transact](https://github.com/dbos-inc/dbos-t
    PGPASSWORD=$YOURPASSOWRD go run main.go
    ```
 
-## How it Works
-
-The loan application goes through a workflow with multiple steps:
-
-```go
-func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, error) {
-    // Step 1: Credit Check
-    _, err := dbos.RunAsStep(ctx, Credit_Check, loanApp)
-    if err != nil {
-        return "", err
-    }
-
-    // Step 2: Document Verification  
-    _, err = dbos.RunAsStep(ctx, Document_Verification, loanApp)
-    if err != nil {
-        return "", err
-    }
-
-    return "Loan application processed", nil
-}
-```
-
 Each step is:
 - **Durable**: Survives crashes and restarts
 - **Observable**: Progress is tracked in PostgreSQL

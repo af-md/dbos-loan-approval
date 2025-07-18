@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-go/dbos"
@@ -22,6 +24,30 @@ func init() {
 	gob.Register(src.CreditCheckResult{})
 }
 
+func submitLoanApplicationHanlder(w http.ResponseWriter, r *http.Request) {
+	var loanApp src.LoanApplication
+	if err := json.NewDecoder(r.Body).Decode(&loanApp); err != nil {
+		http.Error(w, "Invalid Loan Application JSON", http.StatusBadRequest)
+		return
+	}
+
+	loanApp.SubmittedAt = time.Now()
+
+	handle, err := processOrderWf(context.Background(), loanApp)
+	if err != nil {
+		panic(err)
+	}
+
+	result, err := handle.GetResult(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Result: %s\n", result)
+
+	json.NewEncoder(w).Encode(map[string]string{"result": result})
+}
+
 func main() {
 	err := dbos.Launch()
 	if err != nil {
@@ -36,28 +62,7 @@ func main() {
 		panic(fmt.Sprintf("Failed to initialize schema: %v", err))
 	}
 
-	loanApp := src.LoanApplication{
-		ApplicationID: "LOAN-2024-004",
-		ApplicantName: "John Doe",
-		Email:         "john.doe@example.com",
-		Phone:         "+1-555-0123",
-		LoanAmount:    50000,
-		LoanPurpose:   "personal",
-		AnnualIncome:  75000,
-		SubmittedAt:   time.Now(),
-	}
-
-	handle, err := processOrderWf(context.Background(), loanApp)
-	if err != nil {
-		panic(err)
-	}
-
-	result, err := handle.GetResult(context.Background())
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("Result: %s\n", result)
-
-	time.Sleep(2 * time.Second)
+	http.HandleFunc("/submit-loan", submitLoanApplicationHanlder)
+	fmt.Println("Server starting on :8080")
+	http.ListenAndServe(":8080", nil)
 }

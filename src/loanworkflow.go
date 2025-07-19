@@ -81,7 +81,92 @@ func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, 
 		return "Application pending - documents need verification", nil
 	}
 
-	return "Loan application approved and ready for processing", nil
+	workflowState, ok := ctx.Value(dbos.WorkflowStateKey).(*dbos.WorkflowState)
+	if !ok {
+		return "", fmt.Errorf("workflow state not found")
+	}
+
+	workflowID := workflowState.WorkflowID
+
+	fmt.Printf("Loan workflow ID: %s\n", workflowID)
+
+	if loanApp.LoanAmount > 3000 {
+		// send for manual approval
+
+		topic := "review-request"
+
+		fmt.Println("Notification send for approval")
+
+		// wait for manual approval response
+		response, err := dbos.Recv[string](ctx, dbos.WorkflowRecvInput{
+			Topic:   topic,
+			Timeout: 60 * time.Second,
+		})
+
+		if err != nil {
+			return "", fmt.Errorf("failed during manual approval process received: %s", err.Error())
+		}
+		fmt.Println("Notification received from approval")
+
+		if response != "APPROVED" {
+			return "Loan application: Rejected", nil
+		}
+	}
+
+	return "Loan application: Approved", nil
+}
+
+func LoanProcessWorkflowV2(ctx context.Context, loanApp LoanApplication) (string, error) {
+	workflowState, ok := ctx.Value(dbos.WorkflowStateKey).(*dbos.WorkflowState)
+	if !ok {
+		return "", fmt.Errorf("workflow state not found")
+	}
+
+	workflowID := workflowState.WorkflowID
+
+	fmt.Printf("Loan workflow ID: %s\n", workflowID)
+
+	if loanApp.LoanAmount > 3000 {
+		// send for manual approval
+
+		topic := "review-request"
+
+		fmt.Println("Notification send for approval")
+
+		// wait for manual approval response
+		response, err := dbos.Recv[string](ctx, dbos.WorkflowRecvInput{
+			Topic:   topic,
+			Timeout: 60 * time.Second,
+		})
+
+		if err != nil {
+			return "", fmt.Errorf("failed during manual approval process received: %s", err.Error())
+		}
+		fmt.Println("Notification received from approval")
+
+		if response != "APPROVED" {
+			return "Loan application: Rejected", nil
+		}
+	}
+
+	return "Loan application: Approved", nil
+}
+
+func ApprovalWorkflow(ctx context.Context, workflowID string) (string, error) {
+	// Receive loan application
+	// Send approval back to the waiting loan workflow
+	err := dbos.Send(ctx, dbos.WorkflowSendInput{
+		DestinationID: workflowID,
+		Topic:         "review-request",
+		Message:       "APPROVED",
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	fmt.Printf("✅ Sent approval decision '%s' to workflow: %s\n", "APPROVED", workflowID)
+	return fmt.Sprintf("Approval sent to %s", workflowID), nil
 }
 
 func SaveLoanApplication(ctx context.Context, loanApp LoanApplication) (*SaveResult, error) {

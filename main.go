@@ -14,7 +14,9 @@ import (
 )
 
 var (
-	processOrderWf = dbos.WithWorkflow(src.LoanProcessWorkflow)
+	processOrderWf   = dbos.WithWorkflow(src.LoanProcessWorkflow)
+	processOrderWfV2 = dbos.WithWorkflow(src.LoanProcessWorkflowV2)
+	approveOrderWf   = dbos.WithWorkflow(src.ApprovalWorkflow)
 )
 
 func init() {
@@ -48,6 +50,31 @@ func submitLoanApplicationHanlder(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"result": result})
 }
 
+func approvalHandler(w http.ResponseWriter, r *http.Request) {
+
+	workflowID := r.URL.Query().Get("workflow_id")
+	if workflowID == "" {
+		http.Error(w, "Missing workflow_id parameter", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("APPROVE FOR WORKFLOW ID: %s", workflowID)
+
+	handle, err := approveOrderWf(r.Context(), workflowID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	result, err := handle.GetResult(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"result": result})
+}
+
 func main() {
 	err := dbos.Launch()
 	if err != nil {
@@ -63,6 +90,8 @@ func main() {
 	}
 
 	http.HandleFunc("/submit-loan", submitLoanApplicationHanlder)
+	http.HandleFunc("/approve", approvalHandler)
+
 	fmt.Println("Server starting on :8080")
 	http.ListenAndServe(":8080", nil)
 }

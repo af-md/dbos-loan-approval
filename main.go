@@ -9,25 +9,22 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-go/dbos"
-
-	"dbos-loan-approval/src"
 )
 
 var (
-	processOrderWf   = dbos.WithWorkflow(src.LoanProcessWorkflow)
-	processOrderWfV2 = dbos.WithWorkflow(src.LoanProcessWorkflowV2)
-	approveOrderWf   = dbos.WithWorkflow(src.ApprovalWorkflow)
+	processOrderWf = dbos.WithWorkflow(LoanProcessWorkflow)
+	approveOrderWf = dbos.WithWorkflow(ApprovalWorkflow)
 )
 
 func init() {
-	gob.Register(src.DuplicateCheckResult{})
-	gob.Register(src.SaveResult{})
-	gob.Register(src.DocumentVerificationResult{})
-	gob.Register(src.CreditCheckResult{})
+	gob.Register(DuplicateCheckResult{})
+	gob.Register(SaveResult{})
+	gob.Register(DocumentVerificationResult{})
+	gob.Register(CreditCheckResult{})
 }
 
 func submitLoanApplicationHanlder(w http.ResponseWriter, r *http.Request) {
-	var loanApp src.LoanApplication
+	var loanApp LoanApplication
 	if err := json.NewDecoder(r.Body).Decode(&loanApp); err != nil {
 		http.Error(w, "Invalid Loan Application JSON", http.StatusBadRequest)
 		return
@@ -84,7 +81,7 @@ func main() {
 	defer dbos.Shutdown()
 
 	// init database
-	err = src.InitializeSchema()
+	err = InitializeSchema()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize schema: %v", err))
 	}

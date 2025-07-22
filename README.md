@@ -31,8 +31,12 @@ This project shows how to use [DBOS Transact](https://github.com/dbos-inc/dbos-t
    ```
 
 3. **Run the application**:
+    ```bash
+    go build -o loanapp
+   ```
+
    ```bash
-   PGPASSWORD=$YOURPASSOWRD go run main.go
+   PGPASSWORD=$YOURPASSOWRD ./loanapp
    ```
 
 Each step is:

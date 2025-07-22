@@ -106,14 +106,15 @@ func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, 
 		if err != nil {
 			return "", fmt.Errorf("failed during manual approval process received: %s", err.Error())
 		}
-		fmt.Println("Notification received from approval")
 
-		if response != "APPROVED" {
+		fmt.Println("Notification received from approval workflow")
+
+		if response != StatusApproved {
 			return "Loan application: Rejected", nil
 		}
 	}
 
-	return "Loan application: Approved", nil
+	return fmt.Sprintf("Loan application: %s", StatusApproved), nil
 }
 
 func ApprovalWorkflow(ctx context.Context, workflowID string) (string, error) {
@@ -122,14 +123,14 @@ func ApprovalWorkflow(ctx context.Context, workflowID string) (string, error) {
 	err := dbos.Send(ctx, dbos.WorkflowSendInput{
 		DestinationID: workflowID,
 		Topic:         "review-request",
-		Message:       "APPROVED",
+		Message:       StatusApproved,
 	})
 
 	if err != nil {
 		return "", err
 	}
 
-	fmt.Printf("✅ Sent approval decision '%s' to workflow: %s\n", "APPROVED", workflowID)
+	fmt.Printf("✅ Sent approval decision '%s' to workflow: %s\n", StatusApproved, workflowID)
 	return fmt.Sprintf("Approval sent to %s", workflowID), nil
 }
 
@@ -159,6 +160,8 @@ func SaveLoanApplication(ctx context.Context, loanApp LoanApplication) (*SaveRes
 }
 
 func CheckIfDuplicate(ctx context.Context, loanApp LoanApplication) (*DuplicateCheckResult, error) {
+	fmt.Printf("Check if there are any duplicates: %s\n", loanApp.ApplicantName)
+
 	db, err := getDBConnection()
 	if err != nil {
 		return &DuplicateCheckResult{}, fmt.Errorf("database connection failed: %w", err)
@@ -192,8 +195,20 @@ func CreditCheck(ctx context.Context, loanApp LoanApplication) (*CreditCheckResu
 }
 
 func DocumentVerification(ctx context.Context, loanApp LoanApplication) (*DocumentVerificationResult, error) {
+	fmt.Printf("Performing document verification for: %s\n", loanApp.ApplicantName)
+
 	return &DocumentVerificationResult{
 		Status:   "complete",
 		Verified: true,
 	}, nil
 }
+
+// Application Submission
+// Initial Validation
+// Credit Check
+// Document Verification
+// Risk Assessment
+// Decision Logic
+// Manual Review (if needed)
+// Final Approval/Rejection
+// Notification & Setup

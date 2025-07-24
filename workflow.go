@@ -65,6 +65,15 @@ type SaveResult struct {
 }
 
 func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, error) {
+	workflowState, ok := ctx.Value(dbos.WorkflowStateKey).(*dbos.WorkflowState)
+	if !ok {
+		return "", fmt.Errorf("workflow state not found")
+	}
+
+	workflowID := workflowState.WorkflowID
+
+	fmt.Printf("Loan workflow ID: %s\n", workflowID)
+
 	// check if already processed
 	duplicateCheckResult, err := dbos.RunAsStep(ctx, CheckIfDuplicate, loanApp)
 	if err != nil {
@@ -98,15 +107,6 @@ func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, 
 	if !documentResult.Verified {
 		return "Application pending - documents need verification", nil
 	}
-
-	workflowState, ok := ctx.Value(dbos.WorkflowStateKey).(*dbos.WorkflowState)
-	if !ok {
-		return "", fmt.Errorf("workflow state not found")
-	}
-
-	workflowID := workflowState.WorkflowID
-
-	fmt.Printf("Loan workflow ID: %s\n", workflowID)
 
 	if loanApp.LoanAmount > 3000 {
 		// send for manual approval
@@ -288,13 +288,3 @@ func SendDecisionNotification(ctx context.Context, loanApp LoanApplication) (*No
 		service: "Twilio",
 	}, nil
 }
-
-// Application Submission
-// Initial Validation
-// Credit Check
-// Document Verification
-// Risk Assessment
-// Decision Logic
-// Manual Review (if needed)
-// Final Approval/Rejection
-// Notification & Setup

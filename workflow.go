@@ -4,11 +4,16 @@ import (
 	"context"
 	"database/sql"
 	_ "embed" // Add this
+	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-go/dbos"
 	_ "github.com/lib/pq"
+	"google.golang.org/genai"
 )
 
 //go:embed schema/schema.sql
@@ -29,6 +34,15 @@ type LoanApplication struct {
 	LoanPurpose   string    `json:"loan_purpose"` // "home", "auto", "personal"
 	AnnualIncome  float64   `json:"annual_income"`
 	SubmittedAt   time.Time `json:"submitted_at"`
+	CVText        string    `json:"cv_text"`
+}
+
+type LLMCreditAssessment struct {
+	Score      int      `json:"score"`
+	Reasoning  string   `json:"reasoning"`
+	RedFlags   []string `json:"red_flags"`
+	Positives  []string `json:"positives"`
+	Confidence float64  `json:"confidence"`
 }
 
 type DuplicateCheckResult struct {
@@ -67,9 +81,13 @@ func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, 
 		return "", err
 	}
 
-	_, err = dbos.RunAsStep(ctx, CreditCheck, loanApp)
+	creditCheck, err := dbos.RunAsStep(ctx, CreditCheck, loanApp)
 	if err != nil {
 		return "", err
+	}
+
+	if !creditCheck.Approved {
+		return fmt.Sprintf("Your loan application was rejected when checking your credit score. \n Your credi score was: %d", creditCheck.CreditScore), nil
 	}
 
 	documentResult, err := dbos.RunAsStep(ctx, DocumentVerification, loanApp)
@@ -186,11 +204,67 @@ func CheckIfDuplicate(ctx context.Context, loanApp LoanApplication) (*DuplicateC
 }
 
 func CreditCheck(ctx context.Context, loanApp LoanApplication) (*CreditCheckResult, error) {
-	fmt.Printf("Performing credit check for: %s\n", loanApp.ApplicantName)
+	fmt.Printf("Performing credit check for: %s using a LLM\n", loanApp.ApplicantName)
+
+	prompt := fmt.Sprintf(`You are an experienced credit analyst working for a bank. 
+Your job is to assess loan applicants based on documents they submit.
+Always respond with valid JSON in this exact format:
+{
+  "score": <number 1-100>,
+  "reasoning": "<brief explanation>",
+  "red_flags": ["<concerning item>"],
+  "positives": ["<good indicator>"],
+  "confidence": <number 0.0-1.0>
+}
+
+Please analyze this document for creditworthiness:
+
+--- DOCUMENT CONTENT ---
+%s
+--- END DOCUMENT ---
+
+Consider: employment history, income stability, professional background, and any red flags.`, loanApp.CVText)
+
+	// Create Gemini client
+	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+		APIKey: os.Getenv("GEMINI_API_KEY"),
+	})
+	if err != nil {
+		return &CreditCheckResult{}, fmt.Errorf("failed to create Gemini client: %w", err)
+	}
+
+	response, err := client.Models.GenerateContent(ctx, "gemini-2.5-flash", genai.Text(prompt), nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var aiResponse string
+	if len(response.Candidates) > 0 && len(response.Candidates[0].Content.Parts) > 0 {
+		partOne := response.Candidates[0].Content.Parts[0]
+		if partOne.Text != "" {
+			aiResponse = string(partOne.Text)
+		}
+	}
+
+	cleanedResponse := strings.TrimSpace(aiResponse)
+	cleanedResponse = strings.ReplaceAll(cleanedResponse, "```json", "")
+	cleanedResponse = strings.ReplaceAll(cleanedResponse, "```", "")
+	cleanedResponse = strings.ReplaceAll(cleanedResponse, "`", "") // Remove any remaining backticks
+	cleanedResponse = strings.TrimSpace(cleanedResponse)
+
+	// Parse the JSON response
+	var assessment LLMCreditAssessment
+	err = json.Unmarshal([]byte(cleanedResponse), &assessment)
+	if err != nil {
+		return &CreditCheckResult{}, fmt.Errorf("failed to parse AI response: %w", err)
+	}
+
+	// Check if score is higher than 60
+	approved := assessment.Score > 60
 
 	return &CreditCheckResult{
-		CreditScore: 720,
-		Approved:    true,
+		CreditScore: assessment.Score,
+		Approved:    approved,
 	}, nil
 }
 
@@ -200,6 +274,18 @@ func DocumentVerification(ctx context.Context, loanApp LoanApplication) (*Docume
 	return &DocumentVerificationResult{
 		Status:   "complete",
 		Verified: true,
+	}, nil
+}
+
+type NotificationResult struct {
+	service string
+}
+
+func SendDecisionNotification(ctx context.Context, loanApp LoanApplication) (*NotificationResult, error) {
+	fmt.Printf("Sending email notification via Twilio to customer: %s\n", loanApp.ApplicantName)
+
+	return &NotificationResult{
+		service: "Twilio",
 	}, nil
 }
 

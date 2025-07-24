@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-go/dbos"
@@ -73,7 +75,23 @@ func approvalHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	err := dbos.Launch()
+
+	password := url.QueryEscape(os.Getenv("PGPASSWORD"))
+	if password == "" {
+		panic(fmt.Errorf("PGPASSWORD environment variable not set"))
+	}
+	databaseURL := fmt.Sprintf("postgres://postgres:%s@localhost:5432/dbos?sslmode=disable", password)
+	os.Setenv("DBOS_DATABASE_URL", databaseURL)
+
+	err := dbos.Initialize(dbos.Config{
+		AppName:     "loan-app",
+		DatabaseURL: databaseURL,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	err = dbos.Launch()
 	if err != nil {
 		panic(err)
 	}

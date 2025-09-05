@@ -3,7 +3,7 @@ module dbos-loan-approval
 go 1.24.4
 
 require (
-	github.com/dbos-inc/dbos-transact-go v0.0.0-20250722234442-95f06a888873
+	github.com/dbos-inc/dbos-transact-golang v0.5.3-alpha
 	github.com/lib/pq v1.10.9
 	google.golang.org/genai v1.17.0
 )
@@ -28,7 +28,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
+	go.uber.org/atomic v1.9.0 // indirect
 	golang.org/x/crypto v0.40.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dbos-inc/dbos-transact-go/dbos"
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	_ "github.com/lib/pq"
 	"google.golang.org/genai"
 )
@@ -64,18 +64,19 @@ type SaveResult struct {
 	Saved         bool
 }
 
-func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, error) {
-	workflowState, ok := ctx.Value(dbos.WorkflowStateKey).(*dbos.WorkflowState)
-	if !ok {
-		return "", fmt.Errorf("workflow state not found")
+func LoanProcessWorkflow(dbosContext dbos.DBOSContext, loanApp LoanApplication) (string, error) {
+	// Use the provided methods instead of accessing internal state directly
+	workflowID, err := dbos.GetWorkflowID(dbosContext)
+	if err != nil {
+		return "", fmt.Errorf("not within a workflow context: %w", err)
 	}
-
-	workflowID := workflowState.WorkflowID
 
 	fmt.Printf("Loan workflow ID: %s\n", workflowID)
 
 	// check if already processed
-	duplicateCheckResult, err := dbos.RunAsStep(ctx, CheckIfDuplicate, loanApp)
+	duplicateCheckResult, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (*DuplicateCheckResult, error) {
+		return CheckIfDuplicate(ctx, loanApp)
+	})
 	if err != nil {
 		return "", err
 	}
@@ -85,12 +86,17 @@ func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, 
 	}
 
 	// Save the application
-	_, err = dbos.RunAsStep(ctx, SaveLoanApplication, loanApp)
+	_, err = dbos.RunAsStep(dbosContext, func(ctx context.Context) (*SaveResult, error) {
+		return SaveLoanApplication(ctx, loanApp)
+
+	})
 	if err != nil {
 		return "", err
 	}
 
-	creditCheck, err := dbos.RunAsStep(ctx, CreditCheck, loanApp)
+	creditCheck, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (*CreditCheckResult, error) {
+		return CreditCheck(ctx, loanApp)
+	})
 	if err != nil {
 		return "", err
 	}
@@ -99,7 +105,9 @@ func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, 
 		return fmt.Sprintf("Your loan application was rejected when checking your credit score. \n Your credi score was: %d", creditCheck.CreditScore), nil
 	}
 
-	documentResult, err := dbos.RunAsStep(ctx, DocumentVerification, loanApp)
+	documentResult, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (*DocumentVerificationResult, error) {
+		return DocumentVerification(ctx, loanApp)
+	})
 	if err != nil {
 		return "", nil
 	}
@@ -116,10 +124,7 @@ func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, 
 		fmt.Println("Notification send for approval")
 
 		// wait for manual approval response
-		response, err := dbos.Recv[string](ctx, dbos.WorkflowRecvInput{
-			Topic:   topic,
-			Timeout: 60 * time.Second,
-		})
+		response, err := dbos.Recv[string](dbosContext, topic, 60*time.Second)
 
 		if err != nil {
 			return "", fmt.Errorf("failed during manual approval process received: %s", err.Error())
@@ -135,15 +140,11 @@ func LoanProcessWorkflow(ctx context.Context, loanApp LoanApplication) (string, 
 	return fmt.Sprintf("Loan application: %s", StatusApproved), nil
 }
 
-func ApprovalWorkflow(ctx context.Context, workflowID string) (string, error) {
+func ApprovalWorkflow(dbosContext dbos.DBOSContext, workflowID string) (string, error) {
 	// Receive loan application
 	// Send approval back to the waiting loan workflow
-	err := dbos.Send(ctx, dbos.WorkflowSendInput{
-		DestinationID: workflowID,
-		Topic:         "review-request",
-		Message:       StatusApproved,
-	})
-
+	topic := "review-request"
+	err := dbos.Send(dbosContext, workflowID, StatusApproved, topic)
 	if err != nil {
 		return "", err
 	}

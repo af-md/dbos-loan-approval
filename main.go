@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -10,12 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dbos-inc/dbos-transact-go/dbos"
-)
-
-var (
-	processOrderWf = dbos.WithWorkflow(LoanProcessWorkflow)
-	approveOrderWf = dbos.WithWorkflow(ApprovalWorkflow)
+	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
 
 func init() {
@@ -24,6 +18,10 @@ func init() {
 	gob.Register(DocumentVerificationResult{})
 	gob.Register(CreditCheckResult{})
 }
+
+var (
+	dbosContext dbos.DBOSContext
+)
 
 func submitLoanApplicationHanlder(w http.ResponseWriter, r *http.Request) {
 	var loanApp LoanApplication
@@ -34,12 +32,12 @@ func submitLoanApplicationHanlder(w http.ResponseWriter, r *http.Request) {
 
 	loanApp.SubmittedAt = time.Now()
 
-	handle, err := processOrderWf(context.Background(), loanApp)
+	handle, err := dbos.RunAsWorkflow(dbosContext, LoanProcessWorkflow, loanApp)
 	if err != nil {
 		panic(err)
 	}
 
-	result, err := handle.GetResult(context.Background())
+	result, err := handle.GetResult()
 	if err != nil {
 		panic(err)
 	}
@@ -59,13 +57,13 @@ func approvalHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("APPROVE FOR WORKFLOW ID: %s", workflowID)
 
-	handle, err := approveOrderWf(r.Context(), workflowID)
+	handle, err := dbos.RunAsWorkflow(dbosContext, ApprovalWorkflow, workflowID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	result, err := handle.GetResult(r.Context())
+	result, err := handle.GetResult()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -83,7 +81,8 @@ func main() {
 	databaseURL := fmt.Sprintf("postgres://postgres:%s@localhost:5432/dbos?sslmode=disable", password)
 	os.Setenv("DBOS_DATABASE_URL", databaseURL)
 
-	err := dbos.Initialize(dbos.Config{
+	var err error
+	dbosContext, err = dbos.NewDBOSContext(dbos.Config{
 		AppName:     "loan-app",
 		DatabaseURL: databaseURL,
 	})
@@ -91,12 +90,17 @@ func main() {
 		panic(err)
 	}
 
-	err = dbos.Launch()
+	// register workflows
+
+	dbos.RegisterWorkflow(dbosContext, LoanProcessWorkflow)
+	dbos.RegisterWorkflow(dbosContext, ApprovalWorkflow)
+
+	err = dbosContext.Launch()
 	if err != nil {
 		panic(err)
 	}
 
-	defer dbos.Shutdown()
+	defer dbosContext.Cancel()
 
 	// init database
 	err = InitializeSchema()

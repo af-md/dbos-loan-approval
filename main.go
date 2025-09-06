@@ -78,8 +78,8 @@ func main() {
 	if password == "" {
 		panic(fmt.Errorf("PGPASSWORD environment variable not set"))
 	}
-	databaseURL := fmt.Sprintf("postgres://postgres:%s@localhost:5432/dbos?sslmode=disable", password)
-	os.Setenv("DBOS_DATABASE_URL", databaseURL)
+	// TODO: Get local url
+	databaseURL := os.Getenv("DBOS_DATABASE_URL")
 
 	var err error
 	dbosContext, err = dbos.NewDBOSContext(dbos.Config{
@@ -105,8 +105,15 @@ func main() {
 	// init database
 	err = InitializeSchema()
 	if err != nil {
+		fmt.Printf("Panicking because schema initialization failed %v", err)
 		panic(fmt.Sprintf("Failed to initialize schema: %v", err))
 	}
+
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status": "healthy", "message": "app is running"}`)
+	})
 
 	http.HandleFunc("/submit-loan", submitLoanApplicationHanlder)
 	http.HandleFunc("/approve", approvalHandler)

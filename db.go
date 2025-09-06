@@ -12,9 +12,8 @@ func getDBConnection() (*sql.DB, error) {
 		return nil, fmt.Errorf("PGPASSWORD environment variable not set")
 	}
 
-	connStr := fmt.Sprintf("host=localhost port=5432 user=postgres password=%s dbname=dbos sslmode=disable", password)
-
-	db, err := sql.Open("postgres", connStr)
+	databaseURL := os.Getenv("DBOS_DATABASE_URL")
+	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("database connection failed: %w", err)
 	}

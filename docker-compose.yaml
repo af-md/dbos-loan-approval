@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database with pgvector extension for AI features
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: dbos-loan-db
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${PGPASSWORD:-defaultpassword}
+      - PGDATA=/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql  # Optional: initialization scripts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dbos"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # DBOS Loan Application (uncomment when you want to run the app in Docker)
+  # loan-app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: dbos-loan-app
+  #   environment:
+  #     - PGPASSWORD=${PGPASSWORD:-defaultpassword}
+  #     - DATABASE_URL=postgresql://postgres:${PGPASSWORD:-defaultpassword}@postgres:5432/dbos
+  #     - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY}
+  #     - DBOS_LOG_LEVEL=${DBOS_LOG_LEVEL:-info}
+  #   ports:
+  #     - "${APP_PORT:-8080}:8080"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./uploads:/app/uploads  # For document storage if needed
+
+  # Optional: Admin interface for monitoring workflows
+  # adminer:
+  #   image: adminer
+  #   container_name: dbos-loan-adminer
+  #   ports:
+  #     - "${ADMINER_PORT:-8081}:8080"
+  #   depends_on:
+  #     - postgres
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+# Optional: Custom networks for better isolation
+# networks:
+#   dbos-network:
+#     driver: bridge

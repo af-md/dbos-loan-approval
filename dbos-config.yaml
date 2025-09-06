@@ -1,0 +1,19 @@
+name: dbos-loan-approval
+language: go
+runtimeConfig:
+  start:
+    - "go run main.go"
+database:
+  hostname: localhost
+  port: 5432
+  username: postgres
+  password: ${PGPASSWORD}
+  migrate:
+    - go run main.go
+telemetry:
+  logs:
+    logLevel: INFO
+env:
+    GOOGLE_AI_API_KEY:     ${GOOGLE_AI_API_KEY}
+    DBOS_LOG_LEVEL:        ${DBOS_LOG_LEVEL}
+    PGPASSWORD: defaultpassword

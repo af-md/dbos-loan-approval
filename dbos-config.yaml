@@ -3,10 +3,3 @@ language: go
 runtimeConfig:
   start:
     - "go run main.go"
-telemetry:
-  logs:
-    logLevel: INFO
-env:
-  GOOGLE_AI_API_KEY: AI_API_KEY
-  DBOS_LOG_LEVEL: info
-  PGPASSWORD: defaultpassword

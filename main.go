@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -32,7 +33,7 @@ func submitLoanApplicationHanlder(w http.ResponseWriter, r *http.Request) {
 
 	loanApp.SubmittedAt = time.Now()
 
-	handle, err := dbos.RunAsWorkflow(dbosContext, LoanProcessWorkflow, loanApp)
+	handle, err := dbos.RunWorkflow(dbosContext, LoanProcessWorkflow, loanApp)
 	if err != nil {
 		panic(err)
 	}
@@ -57,7 +58,7 @@ func approvalHandler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("APPROVE FOR WORKFLOW ID: %s", workflowID)
 
-	handle, err := dbos.RunAsWorkflow(dbosContext, ApprovalWorkflow, workflowID)
+	handle, err := dbos.RunWorkflow(dbosContext, ApprovalWorkflow, workflowID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -82,9 +83,10 @@ func main() {
 	databaseURL := os.Getenv("DBOS_DATABASE_URL")
 
 	var err error
-	dbosContext, err = dbos.NewDBOSContext(dbos.Config{
+	dbosContext, err = dbos.NewDBOSContext(context.Background(), dbos.Config{
 		AppName:     "loan-app",
 		DatabaseURL: databaseURL,
+		AdminServer: true,
 	})
 	if err != nil {
 		panic(err)
@@ -100,7 +102,7 @@ func main() {
 		panic(err)
 	}
 
-	defer dbosContext.Cancel()
+	defer dbosContext.Shutdown(10 * time.Second)
 
 	// init database
 	err = InitializeSchema()
@@ -118,6 +120,6 @@ func main() {
 	http.HandleFunc("/submit-loan", submitLoanApplicationHanlder)
 	http.HandleFunc("/approve", approvalHandler)
 
-	fmt.Println("Server starting on :8080")
-	http.ListenAndServe(":8080", nil)
+	fmt.Println("Server starting on :3000")
+	http.ListenAndServe(":3000", nil)
 }

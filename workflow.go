@@ -74,7 +74,7 @@ func LoanProcessWorkflow(dbosContext dbos.DBOSContext, loanApp LoanApplication) 
 	fmt.Printf("Loan workflow ID: %s\n", workflowID)
 
 	// check if already processed
-	duplicateCheckResult, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (*DuplicateCheckResult, error) {
+	duplicateCheckResult, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (DuplicateCheckResult, error) {
 		return CheckIfDuplicate(ctx, loanApp)
 	})
 	if err != nil {
@@ -86,17 +86,17 @@ func LoanProcessWorkflow(dbosContext dbos.DBOSContext, loanApp LoanApplication) 
 	}
 
 	// Save the application
-	_, err = dbos.RunAsStep(dbosContext, func(ctx context.Context) (*SaveResult, error) {
+	_, err = dbos.RunAsStep(dbosContext, func(ctx context.Context) (SaveResult, error) {
 		return SaveLoanApplication(ctx, loanApp)
 
-	})
+	}, dbos.WithStepName("duplicate-check"))
 	if err != nil {
 		return "", err
 	}
 
-	creditCheck, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (*CreditCheckResult, error) {
+	creditCheck, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (CreditCheckResult, error) {
 		return CreditCheck(ctx, loanApp)
-	})
+	}, dbos.WithStepName("credit-check"))
 	if err != nil {
 		return "", err
 	}
@@ -105,9 +105,9 @@ func LoanProcessWorkflow(dbosContext dbos.DBOSContext, loanApp LoanApplication) 
 		return fmt.Sprintf("Your loan application was rejected when checking your credit score. \n Your credi score was: %d", creditCheck.CreditScore), nil
 	}
 
-	documentResult, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (*DocumentVerificationResult, error) {
+	documentResult, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (DocumentVerificationResult, error) {
 		return DocumentVerification(ctx, loanApp)
-	})
+	}, dbos.WithStepName("document-verification"))
 	if err != nil {
 		return "", nil
 	}
@@ -153,12 +153,12 @@ func ApprovalWorkflow(dbosContext dbos.DBOSContext, workflowID string) (string, 
 	return fmt.Sprintf("Approval sent to %s", workflowID), nil
 }
 
-func SaveLoanApplication(ctx context.Context, loanApp LoanApplication) (*SaveResult, error) {
+func SaveLoanApplication(ctx context.Context, loanApp LoanApplication) (SaveResult, error) {
 	fmt.Printf("Saving loan application: %s\n", loanApp.ApplicationID)
 
 	db, err := getDBConnection()
 	if err != nil {
-		return &SaveResult{}, fmt.Errorf("database connection failed: %w", err)
+		return SaveResult{}, fmt.Errorf("database connection failed: %w", err)
 	}
 	defer db.Close()
 
@@ -169,21 +169,21 @@ func SaveLoanApplication(ctx context.Context, loanApp LoanApplication) (*SaveRes
 		loanApp.LoanAmount, loanApp.LoanPurpose, loanApp.AnnualIncome, StatusSubmitted, loanApp.SubmittedAt)
 
 	if err != nil {
-		return &SaveResult{}, fmt.Errorf("failed to save application: %w", err)
+		return SaveResult{}, fmt.Errorf("failed to save application: %w", err)
 	}
 
-	return &SaveResult{
+	return SaveResult{
 		ApplicationID: loanApp.ApplicationID,
 		Saved:         true,
 	}, nil
 }
 
-func CheckIfDuplicate(ctx context.Context, loanApp LoanApplication) (*DuplicateCheckResult, error) {
+func CheckIfDuplicate(ctx context.Context, loanApp LoanApplication) (DuplicateCheckResult, error) {
 	fmt.Printf("Check if there are any duplicates: %s\n", loanApp.ApplicantName)
 
 	db, err := getDBConnection()
 	if err != nil {
-		return &DuplicateCheckResult{}, fmt.Errorf("database connection failed: %w", err)
+		return DuplicateCheckResult{}, fmt.Errorf("database connection failed: %w", err)
 	}
 	defer db.Close()
 
@@ -192,19 +192,19 @@ func CheckIfDuplicate(ctx context.Context, loanApp LoanApplication) (*DuplicateC
 	err = db.QueryRow("SELECT application_id FROM loan_applications WHERE application_id = $1", loanApp.ApplicationID).Scan(&existingID)
 	if err == sql.ErrNoRows {
 		// No duplicate found
-		return &DuplicateCheckResult{}, nil
+		return DuplicateCheckResult{}, nil
 	}
 
 	if err != nil {
-		return &DuplicateCheckResult{}, fmt.Errorf("database query failed: %w", err)
+		return DuplicateCheckResult{}, fmt.Errorf("database query failed: %w", err)
 	}
 
 	// Duplicate found
 	fmt.Printf("Duplicate application found: %s\n", existingID)
-	return &DuplicateCheckResult{IsDuplicate: true}, nil
+	return DuplicateCheckResult{IsDuplicate: true}, nil
 }
 
-func CreditCheck(ctx context.Context, loanApp LoanApplication) (*CreditCheckResult, error) {
+func CreditCheck(ctx context.Context, loanApp LoanApplication) (CreditCheckResult, error) {
 	fmt.Printf("Performing credit check for: %s using a LLM\n", loanApp.ApplicantName)
 
 	prompt := fmt.Sprintf(`You are an experienced credit analyst working for a bank. 
@@ -231,7 +231,7 @@ Consider: employment history, income stability, professional background, and any
 		APIKey: os.Getenv("GEMINI_API_KEY"),
 	})
 	if err != nil {
-		return &CreditCheckResult{}, fmt.Errorf("failed to create Gemini client: %w", err)
+		return CreditCheckResult{}, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 
 	response, err := client.Models.GenerateContent(ctx, "gemini-2.5-flash", genai.Text(prompt), nil)
@@ -257,22 +257,22 @@ Consider: employment history, income stability, professional background, and any
 	var assessment LLMCreditAssessment
 	err = json.Unmarshal([]byte(cleanedResponse), &assessment)
 	if err != nil {
-		return &CreditCheckResult{}, fmt.Errorf("failed to parse AI response: %w", err)
+		return CreditCheckResult{}, fmt.Errorf("failed to parse AI response: %w", err)
 	}
 
 	// Check if score is higher than 60
 	approved := assessment.Score > 60
 
-	return &CreditCheckResult{
+	return CreditCheckResult{
 		CreditScore: assessment.Score,
 		Approved:    approved,
 	}, nil
 }
 
-func DocumentVerification(ctx context.Context, loanApp LoanApplication) (*DocumentVerificationResult, error) {
+func DocumentVerification(ctx context.Context, loanApp LoanApplication) (DocumentVerificationResult, error) {
 	fmt.Printf("Performing document verification for: %s\n", loanApp.ApplicantName)
 
-	return &DocumentVerificationResult{
+	return DocumentVerificationResult{
 		Status:   "complete",
 		Verified: true,
 	}, nil
@@ -282,10 +282,10 @@ type NotificationResult struct {
 	service string
 }
 
-func SendDecisionNotification(ctx context.Context, loanApp LoanApplication) (*NotificationResult, error) {
+func SendDecisionNotification(ctx context.Context, loanApp LoanApplication) (NotificationResult, error) {
 	fmt.Printf("Sending email notification via Twilio to customer: %s\n", loanApp.ApplicantName)
 
-	return &NotificationResult{
+	return NotificationResult{
 		service: "Twilio",
 	}, nil
 }

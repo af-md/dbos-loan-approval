@@ -12,8 +12,8 @@ github.com/cncf/udpa/go v0.0.0-20191209042840-269d4d468f6f/go.mod h1:M8M6+tZqaGX
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/dbos-inc/dbos-transact-golang v0.6.0 h1:RQ7hG8w3nhxcUaOCfwtuuo2m1P57z/Em5hoWBladYeI=
-github.com/dbos-inc/dbos-transact-golang v0.6.0/go.mod h1:aIL1pB+wY2l5ooIRZLnx0LTQk9u2VNGfzvJqVPomXtY=
+github.com/dbos-inc/dbos-transact-golang v0.6.1-0.20250929220549-1f6b69fe533f h1:3O8t8EkkJCnRDgUzxhfEVOlKxN7uOgOtIij1n5dgMI8=
+github.com/dbos-inc/dbos-transact-golang v0.6.1-0.20250929220549-1f6b69fe533f/go.mod h1:aIL1pB+wY2l5ooIRZLnx0LTQk9u2VNGfzvJqVPomXtY=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=

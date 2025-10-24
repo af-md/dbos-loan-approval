@@ -3,7 +3,7 @@ module dbos-loan-approval
 go 1.24.4
 
 require (
-	github.com/dbos-inc/dbos-transact-golang v0.6.1-0.20250929220549-1f6b69fe533f
+	github.com/dbos-inc/dbos-transact-golang v0.7.0
 	github.com/lib/pq v1.10.9
 	google.golang.org/genai v1.17.0
 )

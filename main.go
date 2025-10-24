@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/google/uuid"
 )
 
 func init() {
@@ -24,6 +25,11 @@ var (
 	dbosContext dbos.DBOSContext
 )
 
+// this could be built using key business values
+func generateIdempotencyKey() string {
+	return uuid.New().String()
+}
+
 func submitLoanApplicationHanlder(w http.ResponseWriter, r *http.Request) {
 	var loanApp LoanApplication
 	if err := json.NewDecoder(r.Body).Decode(&loanApp); err != nil {
@@ -33,7 +39,9 @@ func submitLoanApplicationHanlder(w http.ResponseWriter, r *http.Request) {
 
 	loanApp.SubmittedAt = time.Now()
 
-	handle, err := dbos.RunWorkflow(dbosContext, LoanProcessWorkflow, loanApp)
+	idempotencyKey := generateIdempotencyKey()
+
+	handle, err := dbos.RunWorkflow(dbosContext, LoanProcessWorkflow, loanApp, dbos.WithWorkflowID(idempotencyKey))
 	if err != nil {
 		panic(err)
 	}
@@ -56,9 +64,11 @@ func approvalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	idempotencyKey := generateIdempotencyKey()
+
 	fmt.Printf("APPROVE FOR WORKFLOW ID: %s", workflowID)
 
-	handle, err := dbos.RunWorkflow(dbosContext, ApprovalWorkflow, workflowID)
+	handle, err := dbos.RunWorkflow(dbosContext, ApprovalWorkflow, workflowID, dbos.WithWorkflowID(idempotencyKey))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -77,9 +87,15 @@ func main() {
 
 	password := url.QueryEscape(os.Getenv("PGPASSWORD"))
 	if password == "" {
-		panic(fmt.Errorf("PGPASSWORD environment variable not set"))
+		password = "defaultpassword"
+		//panic(fmt.Errorf("PGPASSWORD environment variable not set"))
 	}
-	// TODO: Get local url
+
+	if os.Getenv("DBOS_DATABASE_URL") == "" {
+		databaseURL := fmt.Sprintf("postgres://postgres:%s@localhost:5432/postgres?sslmode=disable", password)
+		os.Setenv("DBOS_DATABASE_URL", databaseURL)
+	}
+
 	databaseURL := os.Getenv("DBOS_DATABASE_URL")
 
 	var err error
@@ -93,7 +109,6 @@ func main() {
 	}
 
 	// register workflows
-
 	dbos.RegisterWorkflow(dbosContext, LoanProcessWorkflow)
 	dbos.RegisterWorkflow(dbosContext, ApprovalWorkflow)
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	_ "embed" // Add this
 	"encoding/json"
 	"fmt"
@@ -73,26 +72,16 @@ func LoanProcessWorkflow(dbosContext dbos.DBOSContext, loanApp LoanApplication) 
 
 	fmt.Printf("Loan workflow ID: %s\n", workflowID)
 
-	// check if already processed
-	duplicateCheckResult, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (DuplicateCheckResult, error) {
-		return CheckIfDuplicate(ctx, loanApp)
-	})
-	if err != nil {
-		return "", err
-	}
-
-	if duplicateCheckResult.IsDuplicate {
-		return "already processed", nil
-	}
-
 	// Save the application
 	_, err = dbos.RunAsStep(dbosContext, func(ctx context.Context) (SaveResult, error) {
 		return SaveLoanApplication(ctx, loanApp)
 
-	}, dbos.WithStepName("duplicate-check"))
+	}, dbos.WithStepName("save-loan-application"))
 	if err != nil {
 		return "", err
 	}
+
+	//os.Exit(0)
 
 	creditCheck, err := dbos.RunAsStep(dbosContext, func(ctx context.Context) (CreditCheckResult, error) {
 		return CreditCheck(ctx, loanApp)
@@ -115,6 +104,8 @@ func LoanProcessWorkflow(dbosContext dbos.DBOSContext, loanApp LoanApplication) 
 	if !documentResult.Verified {
 		return "Application pending - documents need verification", nil
 	}
+
+	//os.Exit(0)
 
 	if loanApp.LoanAmount > 3000 {
 		// send for manual approval
@@ -176,32 +167,6 @@ func SaveLoanApplication(ctx context.Context, loanApp LoanApplication) (SaveResu
 		ApplicationID: loanApp.ApplicationID,
 		Saved:         true,
 	}, nil
-}
-
-func CheckIfDuplicate(ctx context.Context, loanApp LoanApplication) (DuplicateCheckResult, error) {
-	fmt.Printf("Check if there are any duplicates: %s\n", loanApp.ApplicantName)
-
-	db, err := getDBConnection()
-	if err != nil {
-		return DuplicateCheckResult{}, fmt.Errorf("database connection failed: %w", err)
-	}
-	defer db.Close()
-
-	// Check if application ID already exists
-	var existingID string
-	err = db.QueryRow("SELECT application_id FROM loan_applications WHERE application_id = $1", loanApp.ApplicationID).Scan(&existingID)
-	if err == sql.ErrNoRows {
-		// No duplicate found
-		return DuplicateCheckResult{}, nil
-	}
-
-	if err != nil {
-		return DuplicateCheckResult{}, fmt.Errorf("database query failed: %w", err)
-	}
-
-	// Duplicate found
-	fmt.Printf("Duplicate application found: %s\n", existingID)
-	return DuplicateCheckResult{IsDuplicate: true}, nil
 }
 
 func CreditCheck(ctx context.Context, loanApp LoanApplication) (CreditCheckResult, error) {
